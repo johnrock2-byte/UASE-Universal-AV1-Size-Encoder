@@ -121,6 +121,18 @@ If you are encoding older broadcast television captures or DVD rips (common with
 
 ---
 
+## Development & AI Transparency
+
+This project was built and iterated through **human-AI pair programming ("vibe coding") using Google Gemini**.
+
+* **Architecture & Strategy:** The conceptual pipeline—adapting vintage multi-file compressibility checks to modern AV1 rate controllers, hardware proxy scouting, and optical disc budgeting—was directed and validated through real-world encoding workloads.
+* **Code Synthesis & Troubleshooting:** Gemini generated the PowerShell logic, handled multi-vendor hardware probing (NVENC/AMF/QSV/CPU), resolved FFmpeg stream quirks, and structured the interactive questionnaire.
+* **Verification:** All commands, bitstreams, and hardware playback telemetry were tested and verified against actual media masters.
+
+We believe in full transparency regarding AI tooling in open-source development.
+
+---
+
 ## License
 
 This project is dedicated to the public domain under the [Unlicense](https://www.google.com/search?q=LICENSE). You are free to use, modify, distribute, or integrate this software for any purpose.
