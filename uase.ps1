@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Universal Video & Season Encoder
-    Auto-detects Hardware Acceleration (NVENC -> AMF -> QSV -> CPU Fallback)
-    Precise File/Disc Size Targeting with SVT-AV1 2-Pass & Subtitle Passthrough
+    UASE — Universal AV1 Size Encoder (v1.1)
+    Hardware-Accelerated Proxy Entropy Scanning (NVENC -> AMF -> QSV -> CPU)
+    Proportional Multi-File & Single Video Capacity Budgeting (SVT-AV1 / Opus)
 #>
 
 $ErrorActionPreference = "Continue"
@@ -24,7 +24,7 @@ function Ask-Option {
             if ($ValidChoices -contains $inputVal) {
                 return $inputVal
             } else {
-                Write-Host "Invalid choice. Valid options: $($ValidChoices -join ', ')" -ForegroundColor Red
+                Write-Host "Invalid selection. Valid options: $($ValidChoices -join ', ')" -ForegroundColor Red
             }
         } else {
             return $inputVal
@@ -48,11 +48,11 @@ function Test-HardwareEncoder {
 
 Clear-Host
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "        UNIVERSAL VIDEO & SEASON ENCODER (AV1 / OPUS)     " -ForegroundColor Cyan
+Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.1)             " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-# 0. Detect Hardware Acceleration Engine
-Write-Host "Probing hardware encoders for fast proxy scanning..." -ForegroundColor DarkGray
+# 0. Hardware Acceleration Detection
+Write-Host "Probing available acceleration engines for proxy scanning..." -ForegroundColor DarkGray
 if (Test-HardwareEncoder -EncoderName "h264_nvenc" -EncoderArgs @("-preset", "p1", "-qp", "16")) {
     $HardwareType = "NVIDIA NVENC (Hardware Accelerated)"
     $ProxyEncoder = "h264_nvenc"
@@ -74,20 +74,65 @@ else {
     $ProxyEncArgs = @("-preset", "ultrafast", "-crf", "16")
 }
 Write-Host "Proxy Engine Selected: $HardwareType`n" -ForegroundColor Green
-Write-Host "Press ENTER on any prompt to accept the bracketed default.`n" -ForegroundColor DarkGray
 
-# 1. Target Size (Single movie or multi-episode season)
-$rawTargetMB = Ask-Option -Prompt "Target total output size in MB (e.g. 4300 for DVD-R, 8100 for DVD-DL, 23000 for BD-R, 700 for CD-R)" -Default "4300"
-$TargetDiscMB = [int]$rawTargetMB
+# 1. Target Capacity & Media Profile Selection
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "        TARGET CAPACITY & MEDIA PROFILE SELECTION         " -ForegroundColor Cyan
+Write-Host "==========================================================" -ForegroundColor Cyan
+Write-Host "[!] WARNING: Smaller margins maximize picture quality but reduce headroom." -ForegroundColor Yellow
+Write-Host "    Minor 2-pass rate-control variance (+/- 1%) or container muxing overhead could" -ForegroundColor Yellow
+Write-Host "    cause 'Max Fill' to slightly overflow physical disc boundaries." -ForegroundColor Yellow
+Write-Host "    Always verify final folder size prior to burning.`n" -ForegroundColor Yellow
 
-# 2. Output Resolution Selection
-Write-Host "`nTarget Output Resolution:" -ForegroundColor Gray
-Write-Host "  1) 854x480   (480p 16:9 DVD-R Standard)"
-Write-Host "  2) 640x480   (480p 4:3 Vintage / Fullscreen)"
+Write-Host "DVD Single Layer (DVD+R baseline: 4,700 MB):" -ForegroundColor Gray
+Write-Host "  1) Safe Fill       (~517 MB margin  |  Target: 4,183 MB)"
+Write-Host "  2) Balanced Fill   (~156 MB margin  |  Target: 4,544 MB)  <-- [DEFAULT]"
+Write-Host "  3) Max Fill        (~81 MB margin   |  Target: 4,619 MB)"
+Write-Host "`nDVD Dual Layer (DVD+R DL baseline: 8,548 MB):" -ForegroundColor Gray
+Write-Host "  4) Safe Fill       (~948 MB margin  |  Target: 7,600 MB)"
+Write-Host "  5) Balanced Fill   (~298 MB margin  |  Target: 8,250 MB)"
+Write-Host "  6) Max Fill        (~148 MB margin  |  Target: 8,400 MB)"
+Write-Host "`nBD-R Single Layer (25 GB baseline: 25,025 MB):" -ForegroundColor Gray
+Write-Host "  7) Safe Fill       (~2,525 MB margin | Target: 22,500 MB)"
+Write-Host "  8) Balanced Fill   (~925 MB margin  |  Target: 24,100 MB)"
+Write-Host "  9) Max Fill        (~425 MB margin  |  Target: 24,600 MB)"
+Write-Host "`nCD-R (700 MB baseline):" -ForegroundColor Gray
+Write-Host "  0) Balanced Fill   (~25 MB margin   |  Target: 675 MB)"
+Write-Host "`nManual Entry:" -ForegroundColor Gray
+Write-Host "  Type any raw target value in MB directly (e.g., 4300, 15000, etc.)`n"
+
+$rawChoice = Ask-Option -Prompt "Select media preset (0-9) or enter custom MB target" -Default "2"
+
+$TargetDiscMB = switch ($rawChoice) {
+    "0" { 675 }
+    "1" { 4183 }
+    "2" { 4544 }
+    "3" { 4619 }
+    "4" { 7600 }
+    "5" { 8250 }
+    "6" { 8400 }
+    "7" { 22500 }
+    "8" { 24100 }
+    "9" { 24600 }
+    Default {
+        if ($rawChoice -match '^\d+$') {
+            [int]$rawChoice
+        } else {
+            Write-Host "Unrecognized selection. Defaulting to DVD Single Layer Balanced Fill (4,544 MB)." -ForegroundColor Yellow
+            4544
+        }
+    }
+}
+Write-Host "Target Allocation Budget Set: $TargetDiscMB MB`n" -ForegroundColor DarkCyan
+
+# 2. Output Resolution & Aspect Ratio Selection
+Write-Host "Target Output Resolution:" -ForegroundColor Gray
+Write-Host "  1) 854x480   (480p 16:9 DVD Single Layer Standard - Default)"
+Write-Host "  2) 640x480   (480p 4:3 Vintage / Broadcast)"
 Write-Host "  3) 1280x720  (720p HD)"
 Write-Host "  4) 1920x1080 (1080p Full HD)"
 Write-Host "  5) 3840x2160 (4K UHD)"
-Write-Host "  Or enter any custom resolution as WIDTHxHEIGHT (e.g. 1920x800, 960x540)"
+Write-Host "  Or enter any custom resolution as WIDTHxHEIGHT (e.g., 1920x800, 960x540)"
 
 while ($true) {
     $resChoice = Ask-Option -Prompt "Select preset (1-5) or enter WIDTHxHEIGHT" -Default "1"
@@ -99,7 +144,6 @@ while ($true) {
     elseif ($resChoice -match '^(\d+)x(\d+)$') {
         $FinalWidth  = [int]$matches[1]
         $FinalHeight = [int]$matches[2]
-        # Force even dimensions for YUV 4:2:0 compatibility
         if ($FinalWidth % 2 -ne 0)  { $FinalWidth++ }
         if ($FinalHeight % 2 -ne 0) { $FinalHeight++ }
         break
@@ -108,7 +152,7 @@ while ($true) {
     }
 }
 
-# Auto-compute proportional 320p intermediate proxy resolution
+# Auto-compute proportional 320p proxy resolution
 if ($FinalHeight -le 320) {
     $ProxyWidth  = $FinalWidth
     $ProxyHeight = $FinalHeight
@@ -116,12 +160,12 @@ if ($FinalHeight -le 320) {
     $ProxyHeight = 320
     $ProxyWidth  = [math]::Round((($FinalWidth / $FinalHeight) * 320) / 2) * 2
 }
-Write-Host "Output Resolution: ${FinalWidth}x${FinalHeight} | Proxy Benchmark: ${ProxyWidth}x${ProxyHeight}" -ForegroundColor DarkCyan
+Write-Host "Output Geometry: ${FinalWidth}x${FinalHeight} | Proxy Benchmark: ${ProxyWidth}x${ProxyHeight}" -ForegroundColor DarkCyan
 
-# 3. Framerate
+# 3. Framerate Configuration
 Write-Host "`nFramerate Options:" -ForegroundColor Gray
 Write-Host "  0) Match Source (Automatic passthrough - recommended)"
-Write-Host "  1) 23.976 fps (Film/Cinema)"
+Write-Host "  1) 23.976 fps (Standard Film/Cinema)"
 Write-Host "  2) 24.0 fps (True 24p)"
 Write-Host "  3) 25.0 fps (PAL Broadcast)"
 Write-Host "  4) 29.97 fps (NTSC Broadcast)"
@@ -146,16 +190,16 @@ $deintFilter = if ($deintChoice -eq "1") { "bwdif=mode=0," } else { "" }
 
 # 5. Film Grain Synthesis
 Write-Host "`nSynthetic Film Grain Strength (AV1 Film Grain Engine):" -ForegroundColor Gray
-Write-Host "  10 = Heavy / Gritty (Super 16mm, low-light film, BSG)"
-Write-Host "  4 to 6 = Light / Natural (Modern 35mm film / drama)"
-Write-Host "  0 = None / Clean (Clean digital sensors, animation, anime)"
+Write-Host "  10 = Heavy / Gritty (Super 16mm, high ISO cinema, gritty sci-fi)"
+Write-Host "  4 to 6 = Light / Natural (Standard 35mm film stock, modern drama)"
+Write-Host "  0 = None / Clean (Clean digital sensors, 2D animation, anime)"
 $rawGrain = Ask-Option -Prompt "Enter film grain strength (0-50)" -Default "5"
 $FilmGrain = [int]$rawGrain
 
 # 6. Audio Configuration
 Write-Host "`nAudio Layout:" -ForegroundColor Gray
 Write-Host "  1) Mono (1 channel)"
-Write-Host "  2) Stereo (2 channels - recommended for max video allocation)"
+Write-Host "  2) Stereo (2 channels - recommended for low bitrate efficiency)"
 Write-Host "  6) 5.1 Surround (6 channels)"
 Write-Host "  8) 7.1 Surround (8 channels)"
 $audioChanChoice = Ask-Option -Prompt "Select Audio Channels (1, 2, 6, 8)" -Default "2" -ValidChoices @("1", "2", "6", "8")
@@ -177,11 +221,11 @@ Write-Host "  0) Strip all subtitles"
 $subChoice = Ask-Option -Prompt "Preserve subtitles? (0 or 1)" -Default "1" -ValidChoices @("0", "1")
 $subArgs = if ($subChoice -eq "1") { @("-map", "0:s?", "-c:s", "copy") } else { @("-sn") }
 
-# 8. SVT-AV1 CPU Speed Preset
+# 8. SVT-AV1 Speed Preset
 Write-Host "`nSVT-AV1 Speed Preset:" -ForegroundColor Gray
-Write-Host "  4 = Maximum Compression Efficiency (Smallest file footprint, slowest)"
-Write-Host "  5 = Balanced Quality & High Throughput (~30% faster than 4)"
-Write-Host "  6 = Fast Turnaround (Lower overall CPU time)"
+Write-Host "  4 = Maximum Compression Efficiency (Highest quality, slowest)"
+Write-Host "  5 = Balanced Quality & Encoding Throughput (~30% faster than 4)"
+Write-Host "  6 = Fast Turnaround (Reduced CPU time)"
 $presetChoice = Ask-Option -Prompt "Select AV1 Preset (4, 5, 6)" -Default "4" -ValidChoices @("4", "5", "6")
 $AV1Preset = [int]$presetChoice
 
@@ -216,7 +260,7 @@ foreach ($f in $files) {
     $tempAV1Test = "temp_av1_test_$index.mkv"
     Remove-Item -Path $tempProxy, $tempAV1Test -Force -ErrorAction SilentlyContinue
 
-    # Step A: Hardware/Fast Proxy intermediate
+    # Step A: Generate fast proxy using selected engine
     Write-Host "  -> Rendering ${ProxyWidth}x${ProxyHeight} proxy via $HardwareType..." -ForegroundColor DarkGray
     & ffmpeg -hide_banner -y -i $f.FullName @fpsArgs `
         -vf "${deintFilter}scale=${ProxyWidth}:${ProxyHeight}:flags=lanczos,format=yuv420p" `
@@ -224,7 +268,7 @@ foreach ($f in $files) {
         -an "$tempProxy" -loglevel error
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Error: Intermediate proxy creation failed on $($f.Name)" -ForegroundColor Red
+        Write-Host "Error: Proxy creation failed on $($f.Name)" -ForegroundColor Red
         exit 1
     }
 
@@ -261,12 +305,11 @@ $totalAudioMB = ($AudioBitrateK * 1000 / 8 / 1048576) * $totalSeasonDuration
 $availableVideoMB = $TargetDiscMB - $totalAudioMB
 
 if ($availableVideoMB -le 0) {
-    Write-Host "Error: Audio allocation exceeds target size! Lower audio bitrate or raise target size." -ForegroundColor Red
+    Write-Host "Error: Audio allocation exceeds target size! Lower audio bitrate or raise target capacity." -ForegroundColor Red
     exit 1
 }
 
 foreach ($ep in $episodes) {
-    # If single file, allocates 100% of available video space; if multi-file, allocates by complexity
     $epShareRatio = if ($episodes.Count -eq 1) { 1.0 } else { $ep.ScanBytes / $totalAV1ComplexityBytes }
     $allocatedMB  = $availableVideoMB * $epShareRatio
     $videoKbps    = [math]::Floor(($allocatedMB * 8192) / $ep.Duration)
@@ -281,11 +324,11 @@ foreach ($ep in $episodes) {
 $projectedTotal = ($episodes | Measure-Object -Property AllocatedMB -Sum).Sum + $totalAudioMB
 Write-Host ("`nTotal Allocated Media: ~{0:N1} MB / Target: {1} MB" -f $projectedTotal, $TargetDiscMB) -ForegroundColor Cyan
 
-# Interactive Pause for Review
+# Interactive Review Gate
 Write-Host "`nReview the calculated bitrates above." -ForegroundColor Yellow
 $proceed = Ask-Option -Prompt "Proceed with final 2-pass CPU encodes? (Y/N)" -Default "Y" -ValidChoices @("Y", "N", "y", "n")
 if ($proceed -match "^[Nn]$") {
-    Write-Host "Encoding halted by user. Exiting." -ForegroundColor Yellow
+    Write-Host "Encoding aborted by user. Exiting." -ForegroundColor Yellow
     exit 0
 }
 
@@ -302,7 +345,7 @@ foreach ($ep in $episodes) {
 
     Remove-Item -Path "ffmpeg2pass-0.log*" -Force -ErrorAction SilentlyContinue
 
-    # Pass 1: SVT-AV1 analysis
+    # Pass 1: SVT-AV1 rate-control analysis
     & ffmpeg -hide_banner -y -i $ep.File.FullName @fpsArgs `
         -map 0:v:0 `
         -vf "${deintFilter}scale=${FinalWidth}:${FinalHeight}:flags=lanczos,format=yuv420p10le" `
@@ -320,7 +363,7 @@ foreach ($ep in $episodes) {
         exit 1
     }
 
-    # Pass 2: Final AV1 video + Opus audio + Subtitle copy + Chapters
+    # Pass 2: Final AV1 video + Opus audio + Subtitle copy + Chapter metadata
     & ffmpeg -hide_banner -y -i $ep.File.FullName @fpsArgs `
         -map 0:v:0 `
         -map 0:a:0? `
@@ -347,4 +390,4 @@ foreach ($ep in $episodes) {
     $current++
 }
 
-Write-Host "`nAll files completed successfully in .\$OutputDir\" -ForegroundColor Green
+Write-Host "`nAll encodes completed successfully. Output files saved in .\$OutputDir\" -ForegroundColor Green
