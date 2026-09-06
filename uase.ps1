@@ -1,11 +1,13 @@
 <#
 .SYNOPSIS
-    UASE — Universal AV1 Size Encoder (v1.2)
+    UASE — Universal AV1 Size Encoder (v1.1)
     Hardware-Accelerated Proxy Entropy Scanning (NVENC -> AMF -> QSV -> CPU)
     Proportional Multi-File & Single Video Capacity Budgeting (SVT-AV1 / Opus)
+    Post-Encode Terminal Visualizer, Text Report, and Vector SVG Generator
 #>
 
 $ErrorActionPreference = "Continue"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- Helper Prompt Function ---
 function Ask-Option {
@@ -48,7 +50,7 @@ function Test-HardwareEncoder {
 
 Clear-Host
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.2)             " -ForegroundColor Cyan
+Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.1)             " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 0. Hardware Acceleration Detection
@@ -152,7 +154,6 @@ while ($true) {
     }
 }
 
-# Auto-compute proportional 320p proxy resolution
 if ($FinalHeight -le 320) {
     $ProxyWidth  = $FinalWidth
     $ProxyHeight = $FinalHeight
@@ -229,6 +230,14 @@ Write-Host "  6 = Fast Turnaround (Reduced CPU time)"
 $presetChoice = Ask-Option -Prompt "Select AV1 Preset (4, 5, 6)" -Default "4" -ValidChoices @("4", "5", "6")
 $AV1Preset = [int]$presetChoice
 
+# 9. Post-Encode Summary Report Saving
+Write-Host "`nPost-Encode Report Files:" -ForegroundColor Gray
+Write-Host "  (Terminal bitrate graphs are always shown on screen upon completion)"
+Write-Host "  1) Yes - Write summary text file and vector SVG graph to output folder"
+Write-Host "  0) No  - Display in console only (Do not save files)"
+$saveReportChoice = Ask-Option -Prompt "Save summary report and SVG to disk? (0 or 1)" -Default "0" -ValidChoices @("0", "1")
+$SaveReportFiles = ($saveReportChoice -eq "1")
+
 $OutputDir = "encoded"
 if (-not (Test-Path -Path $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir | Out-Null
@@ -260,7 +269,6 @@ foreach ($f in $files) {
     $tempAV1Test = "temp_av1_test_$index.mkv"
     Remove-Item -Path $tempProxy, $tempAV1Test -Force -ErrorAction SilentlyContinue
 
-    # Step A: Generate fast proxy using selected engine
     Write-Host "  -> Rendering ${ProxyWidth}x${ProxyHeight} proxy via $HardwareType..." -ForegroundColor DarkGray
     & ffmpeg -hide_banner -y -i $f.FullName @fpsArgs `
         -vf "${deintFilter}scale=${ProxyWidth}:${ProxyHeight}:flags=lanczos,format=yuv420p" `
@@ -272,7 +280,6 @@ foreach ($f in $files) {
         exit 1
     }
 
-    # Step B: Fast SVT-AV1 complexity measurement pass
     Write-Host "  -> Running SVT-AV1 complexity benchmark (CRF 32, Preset 11)..." -ForegroundColor DarkGray
     & ffmpeg -hide_banner -y -i $tempProxy `
         -c:v libsvtav1 -crf 32 -preset 11 `
@@ -324,7 +331,6 @@ foreach ($ep in $episodes) {
 $projectedTotal = ($episodes | Measure-Object -Property AllocatedMB -Sum).Sum + $totalAudioMB
 Write-Host ("`nTotal Allocated Media: ~{0:N1} MB / Target: {1} MB" -f $projectedTotal, $TargetDiscMB) -ForegroundColor Cyan
 
-# Interactive Review Gate
 Write-Host "`nReview the calculated bitrates above." -ForegroundColor Yellow
 $proceed = Ask-Option -Prompt "Proceed with final 2-pass CPU encodes? (Y/N)" -Default "Y" -ValidChoices @("Y", "N", "y", "n")
 if ($proceed -match "^[Nn]$") {
@@ -341,6 +347,7 @@ $current = 1
 
 foreach ($ep in $episodes) {
     $outPath = Join-Path $OutputDir $ep.File.Name
+    $ep | Add-Member -NotePropertyName OutPath -NotePropertyValue $outPath -Force
     Write-Host ("`n[{0}/{1}] Final Render: {2} at {3} kbps..." -f $current, $episodes.Count, $ep.File.Name, $ep.VideoKbps) -ForegroundColor Cyan
 
     Remove-Item -Path "ffmpeg2pass-0.log*" -Force -ErrorAction SilentlyContinue
@@ -390,4 +397,196 @@ foreach ($ep in $episodes) {
     $current++
 }
 
-Write-Host "`nAll encodes completed successfully. Output files saved in .\$OutputDir\" -ForegroundColor Green
+Write-Host "`nAll encodes finished. Analyzing bitstreams for visual reports..." -ForegroundColor Cyan
+
+# ==========================================================
+# === Phase 5: Bitstream Inspection & Reporting Engine   ===
+# ==========================================================
+
+$numBuckets = 50
+$reportLines = [System.Collections.Generic.List[string]]::new()
+$svgCards = [System.Collections.Generic.List[string]]::new()
+
+function Add-ReportLine ([string]$line = "") {
+    Write-Host $line
+    $reportLines.Add($line)
+}
+
+Add-ReportLine "=========================================================="
+Add-ReportLine "        UASE FINAL ENCODE & BITRATE BUDGET REPORT         "
+Add-ReportLine "=========================================================="
+Add-ReportLine ("Target Budget: {0} MB | Profile Resolution: {1}x{2}" -f $TargetDiscMB, $FinalWidth, $FinalHeight)
+Add-ReportLine ""
+
+$totalActualBytes = [int64]0
+$cardIndex = 0
+
+foreach ($ep in $episodes) {
+    $outItem = Get-Item $ep.OutPath
+    $actualBytes = $outItem.Length
+    $totalActualBytes += $actualBytes
+    $actualMB = [math]::Round($actualBytes / 1048576, 2)
+    $percentOfDisc = [math]::Round(($actualBytes / ($TargetDiscMB * 1048576)) * 100, 2)
+
+    # Harvest packet data via ffprobe
+    $probeOutput = & ffprobe -v error -select_streams v:0 -show_entries packet=pts_time,size -of csv=p=0 $ep.OutPath
+    
+    $bucketDuration = $ep.Duration / $numBuckets
+    $bucketBytes = New-Object "double[]" $numBuckets
+
+    foreach ($line in $probeOutput) {
+        $parts = $line.Split(',')
+        if ($parts.Count -ge 2) {
+            $t = 0.0
+            $s = 0.0
+            if ([double]::TryParse($parts[0], [System.Globalization.NumberStyles]::Any, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$t) -and
+                [double]::TryParse($parts[1], [System.Globalization.NumberStyles]::Any, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$s)) {
+                $bIdx = [int][math]::Floor($t / $bucketDuration)
+                if ($bIdx -ge $numBuckets) { $bIdx = $numBuckets - 1 }
+                if ($bIdx -ge 0) { $bucketBytes[$bIdx] += $s }
+            }
+        }
+    }
+
+    $bucketKbps = New-Object "double[]" $numBuckets
+    for ($i = 0; $i -lt $numBuckets; $i++) {
+        $bucketKbps[$i] = [math]::Round(($bucketBytes[$i] * 8) / ($bucketDuration * 1000), 1)
+    }
+
+    $maxKbps = ($bucketKbps | Measure-Object -Maximum).Maximum
+    $minKbps = ($bucketKbps | Measure-Object -Minimum).Minimum
+    $avgKbps = [math]::Round(($bucketKbps | Measure-Object -Average).Average, 1)
+    if ($maxKbps -le 0) { $maxKbps = 1 }
+
+    Add-ReportLine ("FILE: {0}" -f $ep.File.Name)
+    Add-ReportLine ("-" * 62)
+
+    # 10-line text histogram (% of Max Bitrate)
+    for ($row = 10; $row -ge 1; $row--) {
+        $threshold = $row / 10.0
+        $label = switch ($row) {
+            10 { "100% |" }
+            8  { " 80% |" }
+            6  { " 60% |" }
+            4  { " 40% |" }
+            2  { " 20% |" }
+            Default { "     |" }
+        }
+        $chars = New-Object "char[]" $numBuckets
+        for ($col = 0; $col -lt $numBuckets; $col++) {
+            $ratio = $bucketKbps[$col] / $maxKbps
+            $chars[$col] = if ($ratio -ge ($threshold - 0.05)) { [char]0x2588 } else { ' ' }
+        }
+        Add-ReportLine ($label + (New-Object string ($chars, 0, $numBuckets)))
+    }
+    Add-ReportLine ("     +" + ("-" * $numBuckets))
+    
+    $durSpan = [TimeSpan]::FromSeconds($ep.Duration)
+    $durStr = "{0:D2}:{1:D2}:{2:D2}" -f $durSpan.Hours, $durSpan.Minutes, $durSpan.Seconds
+    $timeAxis = "      00:00:00" + (" " * [math]::Max(0, ($numBuckets - 16))) + $durStr
+    Add-ReportLine $timeAxis
+    
+    Add-ReportLine ("Statistics:")
+    Add-ReportLine ("  Peak Bitrate : {0,6} kbps  |  Min Bitrate : {1,6} kbps  |  Avg Bitrate : {2,6} kbps" -f $maxKbps, $minKbps, $avgKbps)
+    Add-ReportLine ("  Encoded Size : {0,6} MB    |  Disc Share  : {1,5} % of target capacity" -f $actualMB, $percentOfDisc)
+    Add-ReportLine ""
+
+    # Build SVG card for file
+    $cardTop = 80 + ($cardIndex * 240)
+    $pointsList = New-Object System.Collections.Generic.List[string]
+    $areaList = New-Object System.Collections.Generic.List[string]
+    
+    $areaList.Add("70,$($cardTop + 140)")
+    for ($b = 0; $b -lt $numBuckets; $b++) {
+        $x = 70 + [math]::Round($b * (700.0 / ($numBuckets - 1)), 1)
+        $y = ($cardTop + 140) - [math]::Round(($bucketKbps[$b] / $maxKbps) * 110.0, 1)
+        $pointsList.Add("$x,$y")
+        $areaList.Add("$x,$y")
+    }
+    $areaList.Add("770,$($cardTop + 140)")
+
+    $ptsStr = $pointsList -join " "
+    $areaStr = $areaList -join " "
+
+    $svgCards.Add(@"
+  <g class="card">
+    <rect x="30" y="$cardTop" width="760" height="215" rx="8" class="card-bg" />
+    <text x="50" y="$($cardTop + 25)" class="card-title">$($ep.File.Name)</text>
+    <text x="770" y="$($cardTop + 25)" class="card-meta" text-anchor="end">${durStr} | ${actualMB} MB (${percentOfDisc}% of target)</text>
+    
+    <!-- Chart Grid -->
+    <line x1="70" y1="$($cardTop + 30)" x2="770" y2="$($cardTop + 30)" class="grid-line" />
+    <line x1="70" y1="$($cardTop + 85)" x2="770" y2="$($cardTop + 85)" class="grid-line" />
+    <line x1="70" y1="$($cardTop + 140)" x2="770" y2="$($cardTop + 140)" class="axis-line" />
+    
+    <text x="65" y="$($cardTop + 34)" class="axis-text" text-anchor="end">${maxKbps}k</text>
+    <text x="65" y="$($cardTop + 89)" class="axis-text" text-anchor="end">$([math]::Round($maxKbps/2))k</text>
+    <text x="65" y="$($cardTop + 144)" class="axis-text" text-anchor="end">0k</text>
+
+    <!-- Waveform Area & Line -->
+    <polygon points="$areaStr" class="chart-area" />
+    <polyline points="$ptsStr" class="chart-line" />
+
+    <!-- Stats Footer -->
+    <text x="70" y="$($cardTop + 175)" class="stats-text">Min: ${minKbps} kbps</text>
+    <text x="270" y="$($cardTop + 175)" class="stats-text">Avg: ${avgKbps} kbps</text>
+    <text x="470" y="$($cardTop + 175)" class="stats-text">Peak: ${maxKbps} kbps</text>
+    <text x="670" y="$($cardTop + 175)" class="stats-text">Opus: ${AudioBitrateK} kbps</text>
+  </g>
+"@)
+    $cardIndex++
+}
+
+# Grand Total Summary Calculation
+$totalActualMB = [math]::Round($totalActualBytes / 1048576, 2)
+$totalPercentUsed = [math]::Round(($totalActualBytes / ($TargetDiscMB * 1048576)) * 100, 2)
+$freeMarginMB = [math]::Round($TargetDiscMB - $totalActualMB, 2)
+
+Add-ReportLine "=========================================================="
+Add-ReportLine "                 SEASON CAPACITY SUMMARY                  "
+Add-ReportLine "=========================================================="
+Add-ReportLine ("Total Disc Space Budgeted : {0,8} MB" -f $TargetDiscMB)
+Add-ReportLine ("Actual Encoded Size Used  : {0,8} MB  ({1}% of capacity)" -f $totalActualMB, $totalPercentUsed)
+Add-ReportLine ("Remaining Safety Headroom : {0,8} MB" -f $freeMarginMB)
+Add-ReportLine "=========================================================="
+
+# Save reports to disk if requested
+if ($SaveReportFiles) {
+    $txtReportPath = Join-Path $OutputDir "uase_encode_report.txt"
+    $svgReportPath = Join-Path $OutputDir "uase_bitrate_report.svg"
+
+    # Write text report
+    $reportLines | Out-File -FilePath $txtReportPath -Encoding utf8
+
+    # Write vector SVG report
+    $svgTotalHeight = 120 + ($cardIndex * 240)
+    $allCardsSvg = $svgCards -join "`n"
+    $svgContent = @"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 $svgTotalHeight" width="100%" height="100%">
+  <style>
+    .bg { fill: #11111b; }
+    .card-bg { fill: #181825; stroke: #313244; stroke-width: 1; }
+    .header-title { fill: #89b4fa; font-family: -apple-system, Segoe UI, Roboto, Helvetica, sans-serif; font-size: 20px; font-weight: bold; }
+    .header-sub { fill: #a6adc8; font-family: -apple-system, Segoe UI, Roboto, Helvetica, sans-serif; font-size: 13px; }
+    .card-title { fill: #cdd6f4; font-family: -apple-system, Segoe UI, Roboto, Helvetica, sans-serif; font-size: 14px; font-weight: 600; }
+    .card-meta { fill: #9399b2; font-family: -apple-system, Segoe UI, Roboto, Helvetica, sans-serif; font-size: 12px; }
+    .grid-line { stroke: #313244; stroke-width: 1; stroke-dasharray: 4,4; }
+    .axis-line { stroke: #45475a; stroke-width: 1; }
+    .axis-text { fill: #6c7086; font-family: monospace; font-size: 10px; }
+    .chart-area { fill: rgba(137, 180, 250, 0.15); }
+    .chart-line { fill: none; stroke: #89b4fa; stroke-width: 2; stroke-linejoin: round; }
+    .stats-text { fill: #bac2de; font-family: monospace; font-size: 11px; }
+  </style>
+  <rect width="100%" height="100%" class="bg" />
+  <text x="30" y="38" class="header-title">UASE Bitrate &amp; Capacity Report</text>
+  <text x="30" y="58" class="header-sub">Budget: ${TargetDiscMB} MB | Encoded: ${totalActualMB} MB (${totalPercentUsed}% utilized, ${freeMarginMB} MB margin remaining)</text>
+  $allCardsSvg
+</svg>
+"@
+    $svgContent | Out-File -FilePath $svgReportPath -Encoding utf8
+    Write-Host "`nReports saved successfully:" -ForegroundColor Green
+    Write-Host "  -> Text Report : $txtReportPath" -ForegroundColor DarkGray
+    Write-Host "  -> Vector SVG  : $svgReportPath" -ForegroundColor DarkGray
+}
+
+Write-Host "`nDone." -ForegroundColor Green
