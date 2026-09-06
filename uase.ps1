@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    UASE — Universal AV1 Size Encoder (v1.1)
+    UASE — Universal AV1 Size Encoder (v1.3)
     Hardware-Accelerated Proxy Entropy Scanning (NVENC -> AMF -> QSV -> CPU)
     Proportional Multi-File & Single Video Capacity Budgeting (SVT-AV1 / Opus)
     Post-Encode Terminal Visualizer, Text Report, and Vector SVG Generator
@@ -50,7 +50,7 @@ function Test-HardwareEncoder {
 
 Clear-Host
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.1)             " -ForegroundColor Cyan
+Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.3)             " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 0. Hardware Acceleration Detection
