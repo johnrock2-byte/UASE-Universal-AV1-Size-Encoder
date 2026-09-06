@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    UASE — Universal AV1 Size Encoder (v1.1)
+    UASE — Universal AV1 Size Encoder (v1.2)
     Hardware-Accelerated Proxy Entropy Scanning (NVENC -> AMF -> QSV -> CPU)
     Proportional Multi-File & Single Video Capacity Budgeting (SVT-AV1 / Opus)
 #>
@@ -39,7 +39,7 @@ function Test-HardwareEncoder {
         [string[]]$EncoderArgs
     )
     try {
-        & ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=duration=0.04:size=64x64:rate=24 -vf "format=yuv420p" -c:v $EncoderName @EncoderArgs -f null NUL 2>$null
+        & ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=duration=1:size=320x240:rate=24 -frames:v 1 -vf "format=yuv420p" -c:v $EncoderName @EncoderArgs -f null NUL 2>$null
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
@@ -48,7 +48,7 @@ function Test-HardwareEncoder {
 
 Clear-Host
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.1)             " -ForegroundColor Cyan
+Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.2)             " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 0. Hardware Acceleration Detection
