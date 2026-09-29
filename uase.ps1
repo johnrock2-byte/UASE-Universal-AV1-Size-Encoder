@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    UASE — Universal AV1 Size Encoder (v1.3)
+    UASE — Universal AV1 Size Encoder (v1.4)
     Hardware-Accelerated Proxy Entropy Scanning (NVENC -> AMF -> QSV -> CPU)
     Proportional Multi-File & Single Video Capacity Budgeting (SVT-AV1 / Opus)
     Post-Encode Terminal Visualizer, Text Report, and Vector SVG Generator
@@ -17,13 +17,13 @@ function Ask-Option {
         [string[]]$ValidChoices = @()
     )
     while ($true) {
-        Write-Host -NoNewline "$Prompt [Default: $Default]: " -ForegroundColor Yellow
+        Write-Host -NoNewline "$Prompt [Default:$Default]: " -ForegroundColor Yellow
         $inputVal = Read-Host
         if ([string]::IsNullOrWhiteSpace($inputVal)) {
             return $Default
         }
         if ($ValidChoices.Count -gt 0) {
-            if ($ValidChoices -contains $inputVal) {
+            if ($ValidChoices -contains$inputVal) {
                 return $inputVal
             } else {
                 Write-Host "Invalid selection. Valid options: $($ValidChoices -join ', ')" -ForegroundColor Red
@@ -50,7 +50,7 @@ function Test-HardwareEncoder {
 
 Clear-Host
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.3)             " -ForegroundColor Cyan
+Write-Host "      UASE: UNIVERSAL AV1 SIZE ENCODER (v1.4)             " -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 0. Hardware Acceleration Detection
@@ -87,19 +87,19 @@ Write-Host "    cause 'Max Fill' to slightly overflow physical disc boundaries."
 Write-Host "    Always verify final folder size prior to burning.`n" -ForegroundColor Yellow
 
 Write-Host "DVD Single Layer (DVD+R baseline: 4,700 MB):" -ForegroundColor Gray
-Write-Host "  1) Safe Fill       (~517 MB margin  |  Target: 4,183 MB)"
-Write-Host "  2) Balanced Fill   (~156 MB margin  |  Target: 4,544 MB)  <-- [DEFAULT]"
-Write-Host "  3) Max Fill        (~81 MB margin   |  Target: 4,619 MB)"
+Write-Host "  1) Safe Fill        (~517 MB margin  |  Target: 4,183 MB)"
+Write-Host "  2) Balanced Fill    (~156 MB margin  |  Target: 4,544 MB)  <-- [DEFAULT]"
+Write-Host "  3) Max Fill         (~81 MB margin   |  Target: 4,619 MB)"
 Write-Host "`nDVD Dual Layer (DVD+R DL baseline: 8,548 MB):" -ForegroundColor Gray
-Write-Host "  4) Safe Fill       (~948 MB margin  |  Target: 7,600 MB)"
-Write-Host "  5) Balanced Fill   (~298 MB margin  |  Target: 8,250 MB)"
-Write-Host "  6) Max Fill        (~148 MB margin  |  Target: 8,400 MB)"
+Write-Host "  4) Safe Fill        (~948 MB margin  |  Target: 7,600 MB)"
+Write-Host "  5) Balanced Fill    (~298 MB margin  |  Target: 8,250 MB)"
+Write-Host "  6) Max Fill         (~148 MB margin  |  Target: 8,400 MB)"
 Write-Host "`nBD-R Single Layer (25 GB baseline: 25,025 MB):" -ForegroundColor Gray
-Write-Host "  7) Safe Fill       (~2,525 MB margin | Target: 22,500 MB)"
-Write-Host "  8) Balanced Fill   (~925 MB margin  |  Target: 24,100 MB)"
-Write-Host "  9) Max Fill        (~425 MB margin  |  Target: 24,600 MB)"
+Write-Host "  7) Safe Fill        (~2,525 MB margin | Target: 22,500 MB)"
+Write-Host "  8) Balanced Fill    (~925 MB margin  |  Target: 24,100 MB)"
+Write-Host "  9) Max Fill         (~425 MB margin  |  Target: 24,600 MB)"
 Write-Host "`nCD-R (700 MB baseline):" -ForegroundColor Gray
-Write-Host "  0) Balanced Fill   (~25 MB margin   |  Target: 675 MB)"
+Write-Host "  0) Balanced Fill    (~25 MB margin   |  Target: 675 MB)"
 Write-Host "`nManual Entry:" -ForegroundColor Gray
 Write-Host "  Type any raw target value in MB directly (e.g., 4300, 15000, etc.)`n"
 
@@ -136,8 +136,7 @@ Write-Host "  4) 1920x1080 (1080p Full HD)"
 Write-Host "  5) 3840x2160 (4K UHD)"
 Write-Host "  Or enter any custom resolution as WIDTHxHEIGHT (e.g., 1920x800, 960x540)"
 
-while ($true) {
-    $resChoice = Ask-Option -Prompt "Select preset (1-5) or enter WIDTHxHEIGHT" -Default "1"
+while ($true) {$resChoice = Ask-Option -Prompt "Select preset (1-5) or enter WIDTHxHEIGHT" -Default "1"
     if ($resChoice -eq "1") { $FinalWidth = 854;  $FinalHeight = 480;  break }
     elseif ($resChoice -eq "2") { $FinalWidth = 640;  $FinalHeight = 480;  break }
     elseif ($resChoice -eq "3") { $FinalWidth = 1280; $FinalHeight = 720;  break }
@@ -146,8 +145,8 @@ while ($true) {
     elseif ($resChoice -match '^(\d+)x(\d+)$') {
         $FinalWidth  = [int]$matches[1]
         $FinalHeight = [int]$matches[2]
-        if ($FinalWidth % 2 -ne 0)  { $FinalWidth++ }
-        if ($FinalHeight % 2 -ne 0) { $FinalHeight++ }
+        if ($FinalWidth \% 2 -ne 0)  {$FinalWidth++ }
+        if ($FinalHeight \% 2 -ne 0) {$FinalHeight++ }
         break
     } else {
         Write-Host "Invalid format. Enter 1-5 or a valid WIDTHxHEIGHT format like 1920x1080." -ForegroundColor Red
@@ -155,11 +154,10 @@ while ($true) {
 }
 
 if ($FinalHeight -le 320) {
-    $ProxyWidth  = $FinalWidth
-    $ProxyHeight = $FinalHeight
+    $ProxyWidth  =$FinalWidth
+    $ProxyHeight =$FinalHeight
 } else {
-    $ProxyHeight = 320
-    $ProxyWidth  = [math]::Round((($FinalWidth / $FinalHeight) * 320) / 2) * 2
+    $ProxyHeight = 320$ProxyWidth  = [math]::Round((($FinalWidth / $FinalHeight) * 320) / 2) * 2
 }
 Write-Host "Output Geometry: ${FinalWidth}x${FinalHeight} | Proxy Benchmark: ${ProxyWidth}x${ProxyHeight}" -ForegroundColor DarkCyan
 
@@ -180,6 +178,15 @@ $fpsArgs = switch ($fpsChoice) {
     "4" { @("-r", "30000/1001") }
     "5" { @("-r", "60000/1001") }
     Default { @() }
+}
+
+$fpsDesc = switch ($fpsChoice) {
+    "1" { "23.976 fps (Film)" }
+    "2" { "24.0 fps (True 24p)" }
+    "3" { "25.0 fps (PAL)" }
+    "4" { "29.97 fps (NTSC)" }
+    "5" { "59.94 fps (HFR)" }
+    Default { "Match Source (Passthrough)" }
 }
 
 # 4. Deinterlacing
@@ -262,14 +269,14 @@ $index = 1
 foreach ($f in $files) {
     Write-Host ("`n[{0}/{1}] Analyzing: {2}" -f $index, $files.Count, $f.Name) -ForegroundColor Yellow
 
-    $durStr = & ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 $f.FullName
+    $durStr = & ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1$f.FullName
     $dur = [double]::Parse($durStr, [System.Globalization.CultureInfo]::InvariantCulture)
 
     $tempProxy = "temp_proxy_$index.mkv"
     $tempAV1Test = "temp_av1_test_$index.mkv"
-    Remove-Item -Path $tempProxy, $tempAV1Test -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path $tempProxy,$tempAV1Test -Force -ErrorAction SilentlyContinue
 
-    Write-Host "  -> Rendering ${ProxyWidth}x${ProxyHeight} proxy via $HardwareType..." -ForegroundColor DarkGray
+    Write-Host "  -> Rendering ${ProxyWidth}x${ProxyHeight} proxy via$HardwareType..." -ForegroundColor DarkGray
     & ffmpeg -hide_banner -y -i $f.FullName @fpsArgs `
         -vf "${deintFilter}scale=${ProxyWidth}:${ProxyHeight}:flags=lanczos,format=yuv420p" `
         -c:v $ProxyEncoder @ProxyEncArgs `
@@ -308,33 +315,60 @@ Write-Host "=== Phase 3: Proportional Bitrate Allocation Table     ===" -Foregro
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $totalSeasonDuration = ($episodes | Measure-Object -Property Duration -Sum).Sum
-$totalAudioMB = ($AudioBitrateK * 1000 / 8 / 1048576) * $totalSeasonDuration
-$availableVideoMB = $TargetDiscMB - $totalAudioMB
+$totalAudioMB = ($AudioBitrateK * 1000 / 8 / 1048576) * $totalSeasonDuration$availableVideoMB = $TargetDiscMB -$totalAudioMB
 
 if ($availableVideoMB -le 0) {
     Write-Host "Error: Audio allocation exceeds target size! Lower audio bitrate or raise target capacity." -ForegroundColor Red
     exit 1
 }
 
-foreach ($ep in $episodes) {
+foreach ($ep in$episodes) {
     $epShareRatio = if ($episodes.Count -eq 1) { 1.0 } else { $ep.ScanBytes / $totalAV1ComplexityBytes }
-    $allocatedMB  = $availableVideoMB * $epShareRatio
-    $videoKbps    = [math]::Floor(($allocatedMB * 8192) / $ep.Duration)
-    if ($videoKbps -lt 100) { $videoKbps = 100 }
+    $allocatedMB  =$availableVideoMB * $epShareRatio$videoKbps    = [math]::Floor(($allocatedMB * 8192) /$ep.Duration)
+    if ($videoKbps -lt 100) {$videoKbps = 100 }
     
-    $ep | Add-Member -NotePropertyName VideoKbps -NotePropertyValue $videoKbps
-    $ep | Add-Member -NotePropertyName AllocatedMB -NotePropertyValue ([math]::Round($allocatedMB, 1))
+    $ep \vert{} Add-Member -NotePropertyName VideoKbps -NotePropertyValue$videoKbps
+    $ep \vert{} Add-Member -NotePropertyName AllocatedMB -NotePropertyValue ([math]::Round($allocatedMB, 1))
 
     Write-Host ("{0,-50} | {1,5} kbps | ~{2,6} MB" -f $ep.File.Name, $videoKbps, [math]::Round($allocatedMB, 1)) -ForegroundColor Green
 }
 
-$projectedTotal = ($episodes | Measure-Object -Property AllocatedMB -Sum).Sum + $totalAudioMB
+$projectedTotal = ($episodes \vert{} Measure-Object -Property AllocatedMB -Sum).Sum +$totalAudioMB
 Write-Host ("`nTotal Allocated Media: ~{0:N1} MB / Target: {1} MB" -f $projectedTotal, $TargetDiscMB) -ForegroundColor Cyan
 
+# --- 10-Second Auto-Proceed Countdown ---
 Write-Host "`nReview the calculated bitrates above." -ForegroundColor Yellow
-$proceed = Ask-Option -Prompt "Proceed with final 2-pass CPU encodes? (Y/N)" -Default "Y" -ValidChoices @("Y", "N", "y", "n")
-if ($proceed -match "^[Nn]$") {
-    Write-Host "Encoding aborted by user. Exiting." -ForegroundColor Yellow
+Write-Host "Auto-proceeding with final 2-pass CPU encodes in 10 seconds..." -ForegroundColor Cyan
+Write-Host "Press [N] to abort, or press any other key / Enter to proceed immediately.`n" -ForegroundColor DarkGray
+
+$timeoutSeconds = 10
+$proceed = $true
+
+try {
+    for ($sec = $timeoutSeconds; $sec -gt 0; $sec--) {
+        Write-Host -NoNewline ("`rStarting encodes in {0,2}s... (Press 'N' to abort) " -f $sec)$loopStart = [DateTime]::UtcNow
+        while (([DateTime]::UtcNow - $loopStart).TotalSeconds -lt 1.0) {
+            if ([Console]::KeyAvailable) {
+                $key = [Console]::ReadKey($true)
+                if ($key.Key -eq [ConsoleKey]::N) {
+                    $proceed =$false
+                    break
+                } else {
+                    $sec = 0
+                    break
+                }
+            }
+            Start-Sleep -Milliseconds 50
+        }
+        if (-not $proceed) { break }
+    }
+    Write-Host "`r                                                                `r" -NoNewline
+} catch {
+    Start-Sleep -Seconds $timeoutSeconds
+}
+
+if (-not $proceed) {
+    Write-Host "`nEncoding aborted by user. Exiting." -ForegroundColor Yellow
     exit 0
 }
 
@@ -345,10 +379,15 @@ Write-Host "==========================================================" -Foregro
 $grainParams = if ($FilmGrain -gt 0) { "film-grain=${FilmGrain}:film-grain-denoise=1:tune=0" } else { "tune=0" }
 $current = 1
 
-foreach ($ep in $episodes) {
-    $outPath = Join-Path $OutputDir $ep.File.Name
-    $ep | Add-Member -NotePropertyName OutPath -NotePropertyValue $outPath -Force
-    Write-Host ("`n[{0}/{1}] Final Render: {2} at {3} kbps..." -f $current, $episodes.Count, $ep.File.Name, $ep.VideoKbps) -ForegroundColor Cyan
+foreach ($ep in$episodes) {
+    # Enforce .mkv extension regardless of source container format
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($ep.File.Name)
+    $outName = "$baseName.mkv"
+    $outPath = Join-Path $OutputDir$outName
+    $ep \vert{} Add-Member -NotePropertyName OutPath -NotePropertyValue$outPath -Force
+    $ep \vert{} Add-Member -NotePropertyName OutName -NotePropertyValue$outName -Force
+    
+    Write-Host ("`n[{0}/{1}] Final Render: {2} at {3} kbps..." -f $current, $episodes.Count, $outName, $ep.VideoKbps) -ForegroundColor Cyan
 
     Remove-Item -Path "ffmpeg2pass-0.log*" -Force -ErrorAction SilentlyContinue
 
@@ -370,7 +409,7 @@ foreach ($ep in $episodes) {
         exit 1
     }
 
-    # Pass 2: Final AV1 video + Opus audio + Subtitle copy + Chapter metadata
+    # Pass 2: Final AV1 video + Opus audio + Subtitle copy + Chapter metadata (.mkv container)
     & ffmpeg -hide_banner -y -i $ep.File.FullName @fpsArgs `
         -map 0:v:0 `
         -map 0:a:0? `
@@ -415,7 +454,16 @@ function Add-ReportLine ([string]$line = "") {
 Add-ReportLine "=========================================================="
 Add-ReportLine "        UASE FINAL ENCODE & BITRATE BUDGET REPORT         "
 Add-ReportLine "=========================================================="
-Add-ReportLine ("Target Budget: {0} MB | Profile Resolution: {1}x{2}" -f $TargetDiscMB, $FinalWidth, $FinalHeight)
+Add-ReportLine ("Target Budget     : {0} MB" -f $TargetDiscMB)
+Add-ReportLine ("Profile Resolution: {0}x{1}" -f $FinalWidth, $FinalHeight)
+Add-ReportLine ("Framerate Mode    : {0}" -f $fpsDesc)
+Add-ReportLine ("Scan / Deint Mode : {0}" -f (if ($deintChoice -eq "1") { "BWDIF Deinterlacing Enabled" } else { "Progressive (Passthrough)" }))
+Add-ReportLine ("SVT-AV1 Preset    : {0}" -f $AV1Preset)
+Add-ReportLine ("Film Grain Engine : {0}" -f (if ($FilmGrain -gt 0) { "Strength $FilmGrain (film-grain-denoise=1)" } else { "0 (Disabled)" }))
+Add-ReportLine ("Audio Profile     : Opus | {0} ch | {1} kbps" -f $AudioChannels, $AudioBitrateK)
+Add-ReportLine ("Subtitle Policy   : {0}" -f (if ($subChoice -eq "1") { "Copy All Losslessly" } else { "Strip All (-sn)" }))
+Add-ReportLine ("Proxy Engine Used : {0}" -f $HardwareType)
+Add-ReportLine "=========================================================="
 Add-ReportLine ""
 
 $totalActualBytes = [int64]0
@@ -458,7 +506,7 @@ foreach ($ep in $episodes) {
     $avgKbps = [math]::Round(($bucketKbps | Measure-Object -Average).Average, 1)
     if ($maxKbps -le 0) { $maxKbps = 1 }
 
-    Add-ReportLine ("FILE: {0}" -f $ep.File.Name)
+    Add-ReportLine ("FILE: {0}" -f $outItem.Name)
     Add-ReportLine ("-" * 62)
 
     # 10-line text histogram (% of Max Bitrate)
@@ -511,7 +559,7 @@ foreach ($ep in $episodes) {
     $svgCards.Add(@"
   <g class="card">
     <rect x="30" y="$cardTop" width="760" height="215" rx="8" class="card-bg" />
-    <text x="50" y="$($cardTop + 25)" class="card-title">$($ep.File.Name)</text>
+    <text x="50" y="$($cardTop + 25)" class="card-title">$($outItem.Name)</text>
     <text x="770" y="$($cardTop + 25)" class="card-meta" text-anchor="end">${durStr} | ${actualMB} MB (${percentOfDisc}% of target)</text>
     
     <!-- Chart Grid -->
@@ -543,7 +591,7 @@ $totalPercentUsed = [math]::Round(($totalActualBytes / ($TargetDiscMB * 1048576)
 $freeMarginMB = [math]::Round($TargetDiscMB - $totalActualMB, 2)
 
 Add-ReportLine "=========================================================="
-Add-ReportLine "                 SEASON CAPACITY SUMMARY                  "
+Add-ReportLine "                  SEASON CAPACITY SUMMARY                 "
 Add-ReportLine "=========================================================="
 Add-ReportLine ("Total Disc Space Budgeted : {0,8} MB" -f $TargetDiscMB)
 Add-ReportLine ("Actual Encoded Size Used  : {0,8} MB  ({1}% of capacity)" -f $totalActualMB, $totalPercentUsed)
@@ -579,11 +627,10 @@ if ($SaveReportFiles) {
   </style>
   <rect width="100%" height="100%" class="bg" />
   <text x="30" y="38" class="header-title">UASE Bitrate &amp; Capacity Report</text>
-  <text x="30" y="58" class="header-sub">Budget: ${TargetDiscMB} MB | Encoded: ${totalActualMB} MB (${totalPercentUsed}% utilized, ${freeMarginMB} MB margin remaining)</text>
-  $allCardsSvg
+  <text x="30" y="58" class="header-sub">Budget: ${TargetDiscMB} MB | Encoded: ${totalActualMB} MB (${totalPercentUsed}% utilized, ${freeMarginMB} MB margin remaining)</text>$allCardsSvg
 </svg>
 "@
-    $svgContent | Out-File -FilePath $svgReportPath -Encoding utf8
+    $svgContent \vert{} Out-File -FilePath$svgReportPath -Encoding utf8
     Write-Host "`nReports saved successfully:" -ForegroundColor Green
     Write-Host "  -> Text Report : $txtReportPath" -ForegroundColor DarkGray
     Write-Host "  -> Vector SVG  : $svgReportPath" -ForegroundColor DarkGray
